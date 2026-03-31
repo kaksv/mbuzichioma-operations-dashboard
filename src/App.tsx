@@ -126,6 +126,7 @@ export default function App() {
             <table className="w-full min-w-[760px] text-sm">
               <thead>
                 <tr className="text-left text-slate-500">
+                  <th className="pb-2">Thumbnail</th>
                   <th className="pb-2">ID</th>
                   <th className="pb-2">Title</th>
                   <th className="pb-2">Price</th>
@@ -137,6 +138,19 @@ export default function App() {
               <tbody>
                 {products.map((p) => (
                   <tr key={p.id} className="border-t border-black/5 text-slate-800">
+                    <td className="py-2">
+                      <img
+                        src={p.photoUrl}
+                        alt={p.title}
+                        className="h-12 w-16 rounded-md border border-black/10 object-cover"
+                        loading="lazy"
+                        onError={(e) => {
+                          const img = e.currentTarget
+                          img.onerror = null
+                          img.src = '/favicon.svg'
+                        }}
+                      />
+                    </td>
                     <td className="py-2 font-mono text-xs">{p.id}</td>
                     <td className="py-2">{p.title}</td>
                     <td className="py-2">{formatUGX(p.priceUGX)}</td>
@@ -147,7 +161,7 @@ export default function App() {
                 ))}
                 {!loading && products.length === 0 ? (
                   <tr>
-                    <td className="py-3 text-slate-500" colSpan={6}>
+                    <td className="py-3 text-slate-500" colSpan={7}>
                       No products found.
                     </td>
                   </tr>
