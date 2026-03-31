@@ -41,6 +41,7 @@ export default function App() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [savingOrderId, setSavingOrderId] = useState<string | null>(null)
+  const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null)
 
   async function loadAll(filter = statusFilter) {
     setLoading(true)
@@ -61,6 +62,37 @@ export default function App() {
     void loadAll('')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    if (selectedImageIndex == null) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setSelectedImageIndex(null)
+        return
+      }
+      if (e.key === 'ArrowRight') {
+        setSelectedImageIndex((curr) => {
+          if (curr == null || products.length === 0) return curr
+          return (curr + 1) % products.length
+        })
+      }
+      if (e.key === 'ArrowLeft') {
+        setSelectedImageIndex((curr) => {
+          if (curr == null || products.length === 0) return curr
+          return (curr - 1 + products.length) % products.length
+        })
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [selectedImageIndex, products.length])
+
+  useEffect(() => {
+    if (selectedImageIndex == null) return
+    if (selectedImageIndex >= products.length) {
+      setSelectedImageIndex(products.length > 0 ? 0 : null)
+    }
+  }, [products.length, selectedImageIndex])
 
   async function onChangeStatus(orderId: string, status: string) {
     setSavingOrderId(orderId)
@@ -85,6 +117,21 @@ export default function App() {
     ],
     [overview],
   )
+
+  const selectedImage =
+    selectedImageIndex != null && selectedImageIndex >= 0 && selectedImageIndex < products.length
+      ? products[selectedImageIndex]
+      : null
+
+  function goNextImage() {
+    if (products.length === 0 || selectedImageIndex == null) return
+    setSelectedImageIndex((selectedImageIndex + 1) % products.length)
+  }
+
+  function goPrevImage() {
+    if (products.length === 0 || selectedImageIndex == null) return
+    setSelectedImageIndex((selectedImageIndex - 1 + products.length) % products.length)
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-orange-50 via-white to-orange-50">
@@ -139,17 +186,24 @@ export default function App() {
                 {products.map((p) => (
                   <tr key={p.id} className="border-t border-black/5 text-slate-800">
                     <td className="py-2">
-                      <img
-                        src={p.photoUrl}
-                        alt={p.title}
-                        className="h-12 w-16 rounded-md border border-black/10 object-cover"
-                        loading="lazy"
-                        onError={(e) => {
-                          const img = e.currentTarget
-                          img.onerror = null
-                          img.src = '/favicon.svg'
-                        }}
-                      />
+                      <button
+                        type="button"
+                        className="group relative block rounded-md border border-black/10"
+                        onClick={() => setSelectedImageIndex(products.findIndex((x) => x.id === p.id))}
+                        aria-label={`Preview ${p.title} image`}
+                      >
+                        <img
+                          src={p.photoUrl}
+                          alt={p.title}
+                          className="h-12 w-16 rounded-md object-cover transition group-hover:opacity-90"
+                          loading="lazy"
+                          onError={(e) => {
+                            const img = e.currentTarget
+                            img.onerror = null
+                            img.src = '/favicon.svg'
+                          }}
+                        />
+                      </button>
                     </td>
                     <td className="py-2 font-mono text-xs">{p.id}</td>
                     <td className="py-2">{p.title}</td>
@@ -244,6 +298,63 @@ export default function App() {
           </div>
         </section>
       </main>
+
+      {selectedImage ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          onClick={() => setSelectedImageIndex(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Product image preview"
+        >
+          <div
+            className="relative max-h-[90vh] max-w-4xl overflow-hidden rounded-xl bg-white"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="absolute left-3 top-1/2 -translate-y-1/2 rounded-full bg-black/70 px-3 py-2 text-sm font-bold text-white"
+              onClick={goPrevImage}
+              aria-label="Previous image"
+            >
+              Prev
+            </button>
+            <button
+              type="button"
+              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-black/70 px-3 py-2 text-sm font-bold text-white"
+              onClick={goNextImage}
+              aria-label="Next image"
+            >
+              Next
+            </button>
+            <button
+              type="button"
+              className="absolute right-3 top-3 rounded-full bg-black/70 px-3 py-1 text-sm font-bold text-white"
+              onClick={() => setSelectedImageIndex(null)}
+            >
+              Close
+            </button>
+            <img
+              src={selectedImage.photoUrl}
+              alt={selectedImage.title}
+              className="max-h-[80vh] w-auto max-w-[90vw] object-contain"
+              onError={(e) => {
+                const img = e.currentTarget
+                img.onerror = null
+                img.src = '/favicon.svg'
+              }}
+            />
+            <div className="border-t border-black/10 px-4 py-2 text-sm font-semibold text-slate-700">
+              <div className="flex items-center justify-between gap-3">
+                <span>{selectedImage.title}</span>
+                <span className="text-xs font-medium text-slate-500">
+                  {selectedImageIndex! + 1} / {products.length}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
