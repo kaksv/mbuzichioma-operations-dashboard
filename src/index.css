@@ -1,0 +1,23 @@
+@import 'tailwindcss';
+
+@source './**/*.{ts,tsx}';
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #fff7ed;
+  color: #0f172a;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+#root {
+  min-height: 100svh;
+}
