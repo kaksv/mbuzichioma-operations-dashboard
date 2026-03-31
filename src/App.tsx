@@ -386,9 +386,30 @@ export default function App() {
             </div>
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
-              <input className="rounded-lg border border-black/10 px-3 py-2 text-sm" placeholder="photo URL or Cloudinary public_id" value={createForm.photoUrl} onChange={(e)=>setCreateForm(s=>({...s,photoUrl:e.target.value}))} required />
+              <div className="rounded-lg border border-dashed border-black/20 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                {createForm.photoUrl ? (
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={createForm.photoUrl}
+                      alt="New product preview"
+                      className="h-12 w-16 rounded border border-black/10 object-cover"
+                      onError={(e) => {
+                        const img = e.currentTarget
+                        img.onerror = null
+                        img.src = '/favicon.svg'
+                      }}
+                    />
+                    <div>
+                      <div className="font-semibold text-slate-700">Image uploaded</div>
+                      <div className="font-mono text-[11px] text-slate-500 break-all">{createForm.photoUrl}</div>
+                    </div>
+                  </div>
+                ) : (
+                  <div>No image uploaded yet.</div>
+                )}
+              </div>
               <label className="rounded-lg border border-black/10 px-3 py-2 text-sm font-semibold text-slate-700 cursor-pointer text-center">
-                {uploadingImage ? 'Uploading...' : 'Upload image'}
+                {uploadingImage ? 'Uploading...' : createForm.photoUrl ? 'Replace image' : 'Upload image'}
                 <input type="file" accept="image/*" className="hidden" onChange={(e)=>void onUploadTo('create', e.target.files?.[0] ?? null)} />
               </label>
             </div>
@@ -398,7 +419,7 @@ export default function App() {
               <label className="inline-flex items-center gap-2"><input type="checkbox" checked={createForm.active} onChange={(e)=>setCreateForm(s=>({...s,active:e.target.checked}))} /> Active</label>
             </div>
 
-            <button disabled={savingProduct} className="rounded-lg bg-orange-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-60">{savingProduct ? 'Saving...' : 'Create product'}</button>
+            <button disabled={savingProduct || !createForm.photoUrl.trim()} className="rounded-lg bg-orange-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-60">{savingProduct ? 'Saving...' : 'Create product'}</button>
           </form>
 
           <form onSubmit={onSaveEdit} className="rounded-2xl border border-black/5 bg-white p-5 shadow-lg space-y-3">
@@ -412,11 +433,35 @@ export default function App() {
               <input className="rounded-lg border border-black/10 px-3 py-2 text-sm" placeholder="title" value={editForm.title} onChange={(e)=>setEditForm(s=>({...s,title:e.target.value}))} required />
               <input className="rounded-lg border border-black/10 px-3 py-2 text-sm" placeholder="weight kg" type="number" step="0.01" value={editForm.weightKg} onChange={(e)=>setEditForm(s=>({...s,weightKg:e.target.value}))} required />
               <input className="rounded-lg border border-black/10 px-3 py-2 text-sm" placeholder="price UGX" type="number" value={editForm.priceUGX} onChange={(e)=>setEditForm(s=>({...s,priceUGX:e.target.value}))} required />
-              <input className="rounded-lg border border-black/10 px-3 py-2 text-sm" placeholder="photo URL or Cloudinary public_id" value={editForm.photoUrl} onChange={(e)=>setEditForm(s=>({...s,photoUrl:e.target.value}))} required />
+              <div className="rounded-lg border border-black/10 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                <div className="font-semibold text-slate-700">Current image id</div>
+                <div className="font-mono text-[11px] text-slate-500 break-all">{editForm.photoUrl || 'None'}</div>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
-              <div className="text-xs text-slate-500">Tip: upload to Cloudinary and save public_id (e.g. mbuzzi-choma/six-6)</div>
+              <div className="rounded-lg border border-dashed border-black/20 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                {editForm.photoUrl ? (
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={editForm.photoUrl}
+                      alt="Edit product preview"
+                      className="h-12 w-16 rounded border border-black/10 object-cover"
+                      onError={(e) => {
+                        const img = e.currentTarget
+                        img.onerror = null
+                        img.src = '/favicon.svg'
+                      }}
+                    />
+                    <div>
+                      <div className="font-semibold text-slate-700">Image ready</div>
+                      <div className="text-slate-500">Upload a new one to replace.</div>
+                    </div>
+                  </div>
+                ) : (
+                  <div>No image uploaded yet.</div>
+                )}
+              </div>
               <label className="rounded-lg border border-black/10 px-3 py-2 text-sm font-semibold text-slate-700 cursor-pointer text-center">
                 {uploadingImage ? 'Uploading...' : 'Upload image'}
                 <input type="file" accept="image/*" className="hidden" onChange={(e)=>void onUploadTo('edit', e.target.files?.[0] ?? null)} />
@@ -428,7 +473,7 @@ export default function App() {
               <label className="inline-flex items-center gap-2"><input type="checkbox" checked={editForm.active} onChange={(e)=>setEditForm(s=>({...s,active:e.target.checked}))} /> Active</label>
             </div>
 
-            <button disabled={savingProduct || !editProductId} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-60">{savingProduct ? 'Saving...' : 'Save changes'}</button>
+            <button disabled={savingProduct || !editProductId || !editForm.photoUrl.trim()} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-60">{savingProduct ? 'Saving...' : 'Save changes'}</button>
           </form>
         </section>
 
