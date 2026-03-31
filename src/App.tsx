@@ -40,6 +40,14 @@ function statusBadge(status: string | undefined) {
   }
 }
 
+function slugifyProductId(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
 type ProductFormState = {
   id: string
   title: string
@@ -72,6 +80,7 @@ export default function App() {
   const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null)
 
   const [createForm, setCreateForm] = useState<ProductFormState>(emptyCreateForm)
+  const [createIdTouched, setCreateIdTouched] = useState(false)
   const [editProductId, setEditProductId] = useState<string>('')
   const [editForm, setEditForm] = useState<ProductFormState>(emptyCreateForm)
   const [savingProduct, setSavingProduct] = useState(false)
@@ -136,6 +145,14 @@ export default function App() {
   }, [editProductId, products])
 
   useEffect(() => {
+    if (createIdTouched) return
+    const next = slugifyProductId(createForm.title)
+    if (next !== createForm.id) {
+      setCreateForm((prev) => ({ ...prev, id: next }))
+    }
+  }, [createForm.title, createForm.id, createIdTouched])
+
+  useEffect(() => {
     if (selectedImageIndex == null) return
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -158,6 +175,14 @@ export default function App() {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [selectedImageIndex, products.length])
+
+  useEffect(() => {
+    if (createIdTouched) return
+    const next = slugifyProductId(createForm.title)
+    if (next !== createForm.id) {
+      setCreateForm((prev) => ({ ...prev, id: next }))
+    }
+  }, [createForm.title, createForm.id, createIdTouched])
 
   useEffect(() => {
     if (selectedImageIndex == null) return
@@ -195,6 +220,7 @@ export default function App() {
         active: createForm.active,
       })
       setCreateForm(emptyCreateForm)
+      setCreateIdTouched(false)
       await loadAll(statusFilter)
     } catch (e2: unknown) {
       setError(e2 instanceof Error ? e2.message : 'Failed to create product')
@@ -344,7 +370,16 @@ export default function App() {
           <form onSubmit={onCreateProduct} className="rounded-2xl border border-black/5 bg-white p-5 shadow-lg space-y-3">
             <h2 className="text-lg font-black text-slate-900">Create Product</h2>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <input className="rounded-lg border border-black/10 px-3 py-2 text-sm" placeholder="id (e.g. six-6)" value={createForm.id} onChange={(e)=>setCreateForm(s=>({...s,id:e.target.value}))} required />
+              <div>
+                <div className="flex gap-2">
+                  <input className="w-full rounded-lg border border-black/10 px-3 py-2 text-sm" placeholder="id (auto-generated)" value={createForm.id} onChange={(e)=>{ setCreateIdTouched(true); setCreateForm(s=>({...s,id:e.target.value})) }} required />
+                  <button type="button" className="rounded-lg border border-black/10 px-3 py-2 text-xs font-semibold text-slate-700" onClick={() => { setCreateIdTouched(false); setCreateForm((prev) => ({ ...prev, id: slugifyProductId(prev.title) })) }}>Auto</button>
+                </div>
+                <div className="mt-1 text-xs text-slate-500">
+                  ID allows lowercase letters, numbers, and dashes (e.g. <span className="font-mono">goat-mix-1</span>).
+                  It auto-fills from title unless you edit it manually.
+                </div>
+              </div>
               <input className="rounded-lg border border-black/10 px-3 py-2 text-sm" placeholder="title" value={createForm.title} onChange={(e)=>setCreateForm(s=>({...s,title:e.target.value}))} required />
               <input className="rounded-lg border border-black/10 px-3 py-2 text-sm" placeholder="weight kg" type="number" step="0.01" value={createForm.weightKg} onChange={(e)=>setCreateForm(s=>({...s,weightKg:e.target.value}))} required />
               <input className="rounded-lg border border-black/10 px-3 py-2 text-sm" placeholder="price UGX" type="number" value={createForm.priceUGX} onChange={(e)=>setCreateForm(s=>({...s,priceUGX:e.target.value}))} required />
