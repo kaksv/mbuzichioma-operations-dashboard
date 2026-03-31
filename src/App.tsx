@@ -4,6 +4,10 @@ import {
   getOrders,
   getOverview,
   getProducts,
+  getTrashedProducts,
+  moveProductToTrash,
+  permanentlyDeleteProduct,
+  restoreProduct,
   updateOrderStatus,
   updateProduct,
   uploadProductImage,
@@ -60,6 +64,7 @@ export default function App() {
   const [overview, setOverview] = useState<AdminOverview | null>(null)
   const [products, setProducts] = useState<AdminProduct[]>([])
   const [orders, setOrders] = useState<AdminOrder[]>([])
+  const [trashProducts, setTrashProducts] = useState<AdminProduct[]>([])
   const [statusFilter, setStatusFilter] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -70,6 +75,7 @@ export default function App() {
   const [editProductId, setEditProductId] = useState<string>('')
   const [editForm, setEditForm] = useState<ProductFormState>(emptyCreateForm)
   const [savingProduct, setSavingProduct] = useState(false)
+  const [trashBusyId, setTrashBusyId] = useState<string | null>(null)
   const [uploadingImage, setUploadingImage] = useState(false)
 
   async function refreshOverview() {
@@ -81,10 +87,11 @@ export default function App() {
     setLoading(true)
     setError(null)
     try {
-      const [ov, ps, os] = await Promise.all([getOverview(), getProducts(), getOrders(filter, 100)])
+      const [ov, ps, os, tp] = await Promise.all([getOverview(), getProducts(), getOrders(filter, 100), getTrashedProducts()])
       setOverview(ov)
       setProducts(ps)
       setOrders(os)
+      setTrashProducts(tp)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to load admin data')
     } finally {
@@ -237,6 +244,53 @@ export default function App() {
     }
   }
 
+  async function onMoveToTrash(id: string) {
+    setError(null)
+    setTrashBusyId(id)
+    try {
+      const moved = await moveProductToTrash(id)
+      setProducts((list) => list.filter((p) => p.id !== id))
+      setTrashProducts((list) => [moved, ...list])
+      if (editProductId === id) setEditProductId('')
+      await refreshOverview()
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to move product to trash')
+    } finally {
+      setTrashBusyId(null)
+    }
+  }
+
+  async function onRestoreFromTrash(id: string) {
+    setError(null)
+    setTrashBusyId(id)
+    try {
+      const restored = await restoreProduct(id)
+      setTrashProducts((list) => list.filter((p) => p.id !== id))
+      setProducts((list) => [restored, ...list])
+      await refreshOverview()
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to restore product')
+    } finally {
+      setTrashBusyId(null)
+    }
+  }
+
+  async function onPermanentDelete(id: string) {
+    const ok = window.confirm('Permanently delete this product from trash? This cannot be undone.')
+    if (!ok) return
+
+    setError(null)
+    setTrashBusyId(id)
+    try {
+      await permanentlyDeleteProduct(id)
+      setTrashProducts((list) => list.filter((p) => p.id !== id))
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to permanently delete product')
+    } finally {
+      setTrashBusyId(null)
+    }
+  }
+
   const cards = useMemo(
     () => [
       { label: 'Products', value: String(overview?.products ?? 0), hint: 'Active package sizes' },
@@ -365,6 +419,7 @@ export default function App() {
                   <th className="pb-2">Weight</th>
                   <th className="pb-2">Popular</th>
                   <th className="pb-2">Active</th>
+                  <th className="pb-2">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -396,12 +451,77 @@ export default function App() {
                     <td className="py-2">{p.weightKg}kg</td>
                     <td className="py-2">{p.popular ? 'Yes' : 'No'}</td>
                     <td className="py-2">{p.active ? 'Yes' : 'No'}</td>
+                    <td className="py-2">
+                      <button
+                        type="button"
+                        onClick={() => void onMoveToTrash(p.id)}
+                        disabled={trashBusyId === p.id}
+                        className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 disabled:opacity-60"
+                      >
+                        Trash
+                      </button>
+                    </td>
                   </tr>
                 ))}
                 {!loading && products.length === 0 ? (
                   <tr>
-                    <td className="py-3 text-slate-500" colSpan={7}>
+                    <td className="py-3 text-slate-500" colSpan={8}>
                       No products found.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+
+        <section className="rounded-2xl border border-black/5 bg-white p-5 shadow-lg">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-lg font-black text-slate-900">Trash</h2>
+            <div className="text-xs text-slate-500">Soft-deleted products</div>
+          </div>
+
+          <div className="mt-4 overflow-auto">
+            <table className="w-full min-w-[680px] text-sm">
+              <thead>
+                <tr className="text-left text-slate-500">
+                  <th className="pb-2">ID</th>
+                  <th className="pb-2">Title</th>
+                  <th className="pb-2">Deleted</th>
+                  <th className="pb-2">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {trashProducts.map((p) => (
+                  <tr key={p.id} className="border-t border-black/5 text-slate-800">
+                    <td className="py-2 font-mono text-xs">{p.id}</td>
+                    <td className="py-2">{p.title}</td>
+                    <td className="py-2 text-xs text-slate-500">{p.deletedAtISO ? formatTime(p.deletedAtISO) : '-'}</td>
+                    <td className="py-2 space-x-2">
+                      <button
+                        type="button"
+                        onClick={() => void onRestoreFromTrash(p.id)}
+                        disabled={trashBusyId === p.id}
+                        className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700 disabled:opacity-60"
+                      >
+                        Restore
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void onPermanentDelete(p.id)}
+                        disabled={trashBusyId === p.id}
+                        className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 disabled:opacity-60"
+                      >
+                        Delete permanently
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {!loading && trashProducts.length === 0 ? (
+                  <tr>
+                    <td className="py-3 text-slate-500" colSpan={4}>
+                      Trash is empty.
                     </td>
                   </tr>
                 ) : null}

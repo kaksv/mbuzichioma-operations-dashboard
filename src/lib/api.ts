@@ -15,6 +15,7 @@ export type AdminProduct = {
   popular?: boolean
   active: boolean
   updatedAtISO: string
+  deletedAtISO: string | null
 }
 
 export type AdminOrder = {
@@ -142,6 +143,42 @@ export async function updateProduct(id: string, body: UpdateProductInput): Promi
   if (!r.ok) throw new Error(await readError(r))
   const data = (await r.json()) as { product: AdminProduct }
   return data.product
+}
+
+
+export async function getTrashedProducts(): Promise<AdminProduct[]> {
+  const r = await fetch(`${base}/api/admin/products/trash`, { headers: adminHeaders() })
+  if (!r.ok) throw new Error(await readError(r))
+  const data = (await r.json()) as { products: AdminProduct[] }
+  return data.products
+}
+
+export async function moveProductToTrash(id: string): Promise<AdminProduct> {
+  const r = await fetch(`${base}/api/admin/products/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: adminHeaders(),
+  })
+  if (!r.ok) throw new Error(await readError(r))
+  const data = (await r.json()) as { product: AdminProduct }
+  return data.product
+}
+
+export async function restoreProduct(id: string): Promise<AdminProduct> {
+  const r = await fetch(`${base}/api/admin/products/${encodeURIComponent(id)}/restore`, {
+    method: 'POST',
+    headers: adminHeaders(),
+  })
+  if (!r.ok) throw new Error(await readError(r))
+  const data = (await r.json()) as { product: AdminProduct }
+  return data.product
+}
+
+export async function permanentlyDeleteProduct(id: string): Promise<void> {
+  const r = await fetch(`${base}/api/admin/products/${encodeURIComponent(id)}/permanent`, {
+    method: 'DELETE',
+    headers: adminHeaders(),
+  })
+  if (!r.ok) throw new Error(await readError(r))
 }
 
 async function signCloudinaryUpload(filename: string): Promise<CloudinarySignResponse> {
