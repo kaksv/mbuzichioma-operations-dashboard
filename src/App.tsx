@@ -16,10 +16,8 @@ import {
   restoreProduct,
   setAdminToken,
   updateAdminUser,
-  updateOrderDeliveryStatus,
   updateOrderStatus,
   updateProduct,
-  verifyOrderDelivery,
   uploadProductImage,
   type AdminAuthUser,
   type AdminOrder,
@@ -97,6 +95,7 @@ export default function App() {
   const [orders, setOrders] = useState<AdminOrder[]>([])
   const [trashProducts, setTrashProducts] = useState<AdminProduct[]>([])
   const [statusFilter, setStatusFilter] = useState('')
+  const [orderQuickFilter, setOrderQuickFilter] = useState<'all' | 'awaiting_confirmation'>('all')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [savingOrderId, setSavingOrderId] = useState<string | null>(null)
@@ -548,11 +547,7 @@ export default function App() {
       setDeliveryAlert(null)
       return
     }
-    const pendingVerification = orders.filter(
-      (o) =>
-        (o.deliveryStatus === 'delivered' || o.deliveryStatus === 'not_delivered') &&
-        o.verificationStatus === 'pending_verification',
-    ).length
+    const pendingVerification = orders.filter((o) => o.status === 'delivered').length
     setDeliveryAlert(
       pendingVerification > 0
         ? `${pendingVerification} delivery result(s) need ops verification.`
@@ -568,36 +563,6 @@ export default function App() {
       setOrders((list) => list.map((o) => (o.id === updated.id ? updated : o)))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to claim order')
-    } finally {
-      setSavingOrderId(null)
-    }
-  }
-
-  async function onUpdateDelivery(orderId: string, status: 'out_for_delivery' | 'delivered' | 'not_delivered') {
-    setSavingOrderId(orderId)
-    setError(null)
-    try {
-      const updated = await updateOrderDeliveryStatus(orderId, status)
-      setOrders((list) => list.map((o) => (o.id === updated.id ? updated : o)))
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to update delivery status')
-    } finally {
-      setSavingOrderId(null)
-    }
-  }
-
-  async function onVerifyDelivery(
-    orderId: string,
-    outcome: 'verified_delivered' | 'verified_failed',
-  ) {
-    const notes = window.prompt('Optional verification notes:') ?? ''
-    setSavingOrderId(orderId)
-    setError(null)
-    try {
-      const updated = await verifyOrderDelivery(orderId, outcome, notes)
-      setOrders((list) => list.map((o) => (o.id === updated.id ? updated : o)))
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to verify delivery')
     } finally {
       setSavingOrderId(null)
     }
@@ -633,6 +598,13 @@ export default function App() {
     selectedTrashImageIndex < trashProducts.length
       ? trashProducts[selectedTrashImageIndex]
       : null
+
+  const displayedOrders =
+    orderQuickFilter === 'awaiting_confirmation'
+      ? orders.filter((o) => o.status === 'delivered')
+      : orders
+
+  const awaitingConfirmationCount = orders.filter((o) => o.status === 'delivered').length
 
   function goNextTrashImage() {
     if (trashProducts.length === 0 || selectedTrashImageIndex == null) return
@@ -1067,7 +1039,7 @@ export default function App() {
         <section className="rounded-2xl border border-black/5 bg-white p-5 shadow-lg">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-lg font-black text-slate-900">Orders</h2>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <select
                 value={statusFilter}
                 onChange={async (e) => {
@@ -1079,9 +1051,33 @@ export default function App() {
               >
                 <option value="">All statuses</option>
                 <option value="pending">Pending</option>
+                <option value="processing">Processing</option>
+                <option value="delivered">Delivered</option>
                 <option value="confirmed">Confirmed</option>
                 <option value="cancelled">Cancelled</option>
               </select>
+              <button
+                type="button"
+                onClick={() => setOrderQuickFilter('all')}
+                className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
+                  orderQuickFilter === 'all'
+                    ? 'border-slate-900 bg-slate-900 text-white'
+                    : 'border-black/10 text-slate-700'
+                }`}
+              >
+                All shown
+              </button>
+              <button
+                type="button"
+                onClick={() => setOrderQuickFilter('awaiting_confirmation')}
+                className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
+                  orderQuickFilter === 'awaiting_confirmation'
+                    ? 'border-amber-600 bg-amber-600 text-white'
+                    : 'border-amber-200 bg-amber-50 text-amber-800'
+                }`}
+              >
+                Delivered awaiting confirmation ({awaitingConfirmationCount})
+              </button>
             </div>
           </div>
 
@@ -1092,7 +1088,7 @@ export default function App() {
           ) : null}
 
           <div className="mt-4 space-y-3">
-            {orders.map((o) => (
+            {displayedOrders.map((o) => (
               <article key={o.id} className="rounded-xl border border-black/5 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
@@ -1157,11 +1153,13 @@ export default function App() {
                       className="rounded-lg border border-black/10 px-3 py-1.5 text-sm"
                     >
                       <option value="pending">Pending</option>
+                      <option value="processing">Processing</option>
+                      <option value="delivered">Delivered</option>
                       <option value="confirmed">Confirmed</option>
                       <option value="cancelled">Cancelled</option>
                     </select>
                   ) : (
-                    <div className="text-xs text-slate-500">Only ops/owner can change order status.</div>
+                    <div className="text-xs text-slate-500">Only ops/owner can move order workflow here.</div>
                   )}
                 </div>
 
@@ -1180,27 +1178,11 @@ export default function App() {
                       <>
                         <button
                           type="button"
-                          disabled={savingOrderId === o.id}
-                          onClick={() => void onUpdateDelivery(o.id, 'out_for_delivery')}
-                          className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-semibold text-blue-700 disabled:opacity-60"
-                        >
-                          Out for delivery
-                        </button>
-                        <button
-                          type="button"
-                          disabled={savingOrderId === o.id}
-                          onClick={() => void onUpdateDelivery(o.id, 'delivered')}
+                          disabled={savingOrderId === o.id || (o.status ?? 'pending') !== 'processing'}
+                          onClick={() => void onChangeStatus(o.id, 'delivered')}
                           className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-700 disabled:opacity-60"
                         >
-                          Delivered
-                        </button>
-                        <button
-                          type="button"
-                          disabled={savingOrderId === o.id}
-                          onClick={() => void onUpdateDelivery(o.id, 'not_delivered')}
-                          className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-sm font-semibold text-red-700 disabled:opacity-60"
-                        >
-                          Not delivered
+                          {savingOrderId === o.id ? 'Updating...' : 'Mark Delivered'}
                         </button>
                       </>
                     ) : (
@@ -1209,32 +1191,15 @@ export default function App() {
                   </div>
                 ) : null}
 
-                {canVerifyDelivery &&
-                (o.deliveryStatus === 'delivered' || o.deliveryStatus === 'not_delivered') &&
-                o.verificationStatus === 'pending_verification' ? (
-                  <div className="mt-3 flex items-center gap-2">
-                    <button
-                      type="button"
-                      disabled={savingOrderId === o.id}
-                      onClick={() => void onVerifyDelivery(o.id, 'verified_delivered')}
-                      className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-700 disabled:opacity-60"
-                    >
-                      Verify delivered
-                    </button>
-                    <button
-                      type="button"
-                      disabled={savingOrderId === o.id}
-                      onClick={() => void onVerifyDelivery(o.id, 'verified_failed')}
-                      className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-sm font-semibold text-red-700 disabled:opacity-60"
-                    >
-                      Verify failed
-                    </button>
+                {canVerifyDelivery && o.status === 'delivered' ? (
+                  <div className="mt-2 text-xs font-semibold text-amber-700">
+                    Awaiting ops confirmation. Change order status to confirmed after customer verification.
                   </div>
                 ) : null}
               </article>
             ))}
 
-            {!loading && orders.length === 0 ? (
+            {!loading && displayedOrders.length === 0 ? (
               <div className="rounded-xl border border-black/5 p-4 text-sm text-slate-500">No orders found.</div>
             ) : null}
           </div>
