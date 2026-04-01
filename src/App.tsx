@@ -600,10 +600,23 @@ export default function App() {
       ? trashProducts[selectedTrashImageIndex]
       : null
 
-  const displayedOrders =
-    orderQuickFilter === 'awaiting_confirmation'
-      ? orders.filter((o) => o.status === 'delivered')
-      : orders
+  const displayedOrders = (() => {
+    let base = orders
+    if (isDeliveryPerson && authUser) {
+      base = base.filter((o) => {
+        const assignedToMe = o.assignedDelivery?.id === authUser.id
+        const processingUnassigned = o.status === 'processing' && !o.assignedDelivery
+        const mineInWorkflow =
+          assignedToMe &&
+          ['processing', 'delivered', 'confirmed'].includes(o.status ?? '')
+        return processingUnassigned || mineInWorkflow
+      })
+    }
+    if (orderQuickFilter === 'awaiting_confirmation') {
+      return base.filter((o) => o.status === 'delivered')
+    }
+    return base
+  })()
 
   const awaitingConfirmationCount = orders.filter((o) => o.status === 'delivered').length
 
