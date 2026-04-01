@@ -1,19 +1,29 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
+  clearAdminToken,
+  createAdminUser,
   createProduct,
+  getAdminToken,
+  getAdminUsers,
   getOrders,
   getOverview,
   getProducts,
   getTrashedProducts,
+  loginAdmin,
   moveProductToTrash,
   permanentlyDeleteProduct,
   restoreProduct,
+  setAdminToken,
+  updateAdminUser,
   updateOrderStatus,
   updateProduct,
   uploadProductImage,
+  type AdminAuthUser,
   type AdminOrder,
   type AdminOverview,
   type AdminProduct,
+  type AdminUser,
+  type AdminUserRole,
 } from './lib/api'
 import { resolveProductPhotoUrl } from './lib/resolvePhotoUrl'
 
@@ -72,6 +82,12 @@ const emptyCreateForm: ProductFormState = {
   active: true,
 }
 
+const adminUserStorageKey = 'mbz_admin_user'
+
+function isUnauthorizedError(e: unknown): boolean {
+  return e instanceof Error && /(Unauthorized|Forbidden|401|403)/i.test(e.message)
+}
+
 export default function App() {
   const [overview, setOverview] = useState<AdminOverview | null>(null)
   const [products, setProducts] = useState<AdminProduct[]>([])
@@ -93,6 +109,22 @@ export default function App() {
   const [trashBusyId, setTrashBusyId] = useState<string | null>(null)
   const [uploadingImage, setUploadingImage] = useState(false)
 
+  const [authUser, setAuthUser] = useState<AdminAuthUser | null>(null)
+  const [authLoading, setAuthLoading] = useState(true)
+  const [loginEmail, setLoginEmail] = useState('')
+  const [loginPassword, setLoginPassword] = useState('')
+  const [loggingIn, setLoggingIn] = useState(false)
+
+  const [users, setUsers] = useState<AdminUser[]>([])
+  const [usersLoading, setUsersLoading] = useState(false)
+  const [userForm, setUserForm] = useState({
+    email: '',
+    fullName: '',
+    password: '',
+    role: 'ops_manager' as AdminUserRole,
+  })
+  const [creatingUser, setCreatingUser] = useState(false)
+
   async function refreshOverview() {
     const nextOverview = await getOverview()
     setOverview(nextOverview)
@@ -108,14 +140,34 @@ export default function App() {
       setOrders(os)
       setTrashProducts(tp)
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed to load admin data')
+      if (isUnauthorizedError(e)) {
+        clearAdminToken()
+        localStorage.removeItem(adminUserStorageKey)
+        setAuthUser(null)
+        setError('Session expired. Please sign in again.')
+      } else {
+        setError(e instanceof Error ? e.message : 'Failed to load admin data')
+      }
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    void loadAll('')
+    const token = getAdminToken()
+    const raw = localStorage.getItem(adminUserStorageKey)
+    if (token && raw) {
+      try {
+        const u = JSON.parse(raw) as AdminAuthUser
+        setAuthUser(u)
+        setLoginEmail(u.email)
+        void loadAll('')
+      } catch {
+        clearAdminToken()
+        localStorage.removeItem(adminUserStorageKey)
+      }
+    }
+    setAuthLoading(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -224,6 +276,7 @@ export default function App() {
 
 
   useEffect(() => {
+    if (!authUser) return
     const id = window.setInterval(() => {
       void Promise.all([getOrders(statusFilter, 100), getOverview()])
         .then(([os, ov]) => {
@@ -236,7 +289,87 @@ export default function App() {
     }, 15000)
 
     return () => window.clearInterval(id)
-  }, [statusFilter])
+  }, [statusFilter, authUser])
+
+  async function loadUsers() {
+    if (authUser?.role !== 'owner') return
+    setUsersLoading(true)
+    try {
+      setUsers(await getAdminUsers())
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load users')
+    } finally {
+      setUsersLoading(false)
+    }
+  }
+
+  async function onLogin(e: React.FormEvent) {
+    e.preventDefault()
+    setError(null)
+    setLoggingIn(true)
+    try {
+      const res = await loginAdmin(loginEmail.trim(), loginPassword)
+      setAdminToken(res.token)
+      localStorage.setItem(adminUserStorageKey, JSON.stringify(res.user))
+      setAuthUser(res.user)
+      setLoginPassword('')
+      await loadAll('')
+      if (res.user.role === 'owner') {
+        await loadUsers()
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Login failed')
+    } finally {
+      setLoggingIn(false)
+    }
+  }
+
+  function onLogout() {
+    clearAdminToken()
+    localStorage.removeItem(adminUserStorageKey)
+    setAuthUser(null)
+    setOverview(null)
+    setProducts([])
+    setOrders([])
+    setTrashProducts([])
+    setUsers([])
+  }
+
+  async function onCreateUser(e: React.FormEvent) {
+    e.preventDefault()
+    setError(null)
+    setCreatingUser(true)
+    try {
+      await createAdminUser({
+        email: userForm.email.trim(),
+        fullName: userForm.fullName.trim(),
+        password: userForm.password,
+        role: userForm.role,
+      })
+      setUserForm({ email: '', fullName: '', password: '', role: 'ops_manager' })
+      await loadUsers()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to create user')
+    } finally {
+      setCreatingUser(false)
+    }
+  }
+
+  async function onToggleUserActive(user: AdminUser) {
+    try {
+      const updated = await updateAdminUser(user.id, { active: !user.active })
+      setUsers((list) => list.map((u) => (u.id === updated.id ? { ...u, ...updated } : u)))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to update user')
+    }
+  }
+
+
+  useEffect(() => {
+    if (authUser?.role === 'owner') {
+      void loadUsers()
+    }
+  }, [authUser?.role])
 
   async function onChangeStatus(orderId: string, status: string) {
     setSavingOrderId(orderId)
@@ -412,13 +545,46 @@ export default function App() {
     )
   }
 
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-orange-50 via-white to-orange-50 grid place-items-center p-4">
+        <div className="rounded-2xl border border-black/5 bg-white p-6 shadow-lg text-sm text-slate-600">Loading admin...</div>
+      </div>
+    )
+  }
+
+  if (!authUser) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-orange-50 via-white to-orange-50 grid place-items-center p-4">
+        <form onSubmit={onLogin} className="w-full max-w-md rounded-2xl border border-black/5 bg-white p-6 shadow-lg space-y-3">
+          <div className="text-xs font-bold uppercase tracking-wide text-orange-600">Mbuzzi Choma Admin</div>
+          <h1 className="text-2xl font-black text-slate-900">Sign in</h1>
+          {error ? <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">{error}</div> : null}
+          <input className="w-full rounded-lg border border-black/10 px-3 py-2 text-sm" placeholder="email" type="email" value={loginEmail} onChange={(e)=>setLoginEmail(e.target.value)} required />
+          <input className="w-full rounded-lg border border-black/10 px-3 py-2 text-sm" placeholder="password" type="password" value={loginPassword} onChange={(e)=>setLoginPassword(e.target.value)} required />
+          <button disabled={loggingIn} className="w-full rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-60">{loggingIn ? 'Signing in...' : 'Sign in'}</button>
+        </form>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-orange-50 via-white to-orange-50">
       <header className="mx-auto w-full max-w-7xl px-4 pt-6">
         <div className="rounded-2xl border border-black/5 bg-white p-4 shadow-lg">
-          <div className="text-xs font-bold uppercase tracking-wide text-orange-600">Mbuzzi Choma Admin</div>
-          <h1 className="mt-1 text-2xl font-black text-slate-900">Operations Dashboard</h1>
-          <p className="mt-1 text-sm text-slate-600">Connected to live admin API endpoints.</p>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="text-xs font-bold uppercase tracking-wide text-orange-600">Mbuzzi Choma Admin</div>
+              <h1 className="mt-1 text-2xl font-black text-slate-900">Operations Dashboard</h1>
+              <p className="mt-1 text-sm text-slate-600">Connected to live admin API endpoints.</p>
+            </div>
+            <div className="text-right">
+              <div className="text-sm font-semibold text-slate-800">{authUser.fullName}</div>
+              <div className="text-xs text-slate-500">{authUser.email} • {authUser.role}</div>
+              <button type="button" onClick={onLogout} className="mt-2 rounded-lg border border-black/10 px-3 py-1.5 text-xs font-semibold text-slate-700">Logout</button>
+            </div>
+          </div>
         </div>
       </header>
 
@@ -436,6 +602,59 @@ export default function App() {
             </article>
           ))}
         </section>
+
+        {authUser.role === 'owner' ? (
+          <section className="rounded-2xl border border-black/5 bg-white p-5 shadow-lg space-y-4">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-lg font-black text-slate-900">User Management</h2>
+              <button type="button" onClick={() => void loadUsers()} className="rounded-lg border border-black/10 px-3 py-1.5 text-sm font-semibold text-slate-700">Refresh</button>
+            </div>
+
+            <form onSubmit={onCreateUser} className="grid grid-cols-1 gap-3 md:grid-cols-5">
+              <input className="rounded-lg border border-black/10 px-3 py-2 text-sm" placeholder="email" type="email" value={userForm.email} onChange={(e)=>setUserForm((s)=>({...s,email:e.target.value}))} required />
+              <input className="rounded-lg border border-black/10 px-3 py-2 text-sm" placeholder="full name" value={userForm.fullName} onChange={(e)=>setUserForm((s)=>({...s,fullName:e.target.value}))} required />
+              <input className="rounded-lg border border-black/10 px-3 py-2 text-sm" placeholder="temporary password" type="password" minLength={8} value={userForm.password} onChange={(e)=>setUserForm((s)=>({...s,password:e.target.value}))} required />
+              <select className="rounded-lg border border-black/10 px-3 py-2 text-sm" value={userForm.role} onChange={(e)=>setUserForm((s)=>({...s,role:e.target.value as AdminUserRole}))}>
+                <option value="ops_manager">ops_manager</option>
+                <option value="delivery_person">delivery_person</option>
+                <option value="owner">owner</option>
+              </select>
+              <button disabled={creatingUser} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-60">{creatingUser ? 'Creating...' : 'Create user'}</button>
+            </form>
+
+            <div className="overflow-auto">
+              <table className="w-full min-w-[760px] text-sm">
+                <thead>
+                  <tr className="text-left text-slate-500">
+                    <th className="pb-2">Name</th>
+                    <th className="pb-2">Email</th>
+                    <th className="pb-2">Role</th>
+                    <th className="pb-2">Active</th>
+                    <th className="pb-2">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.map((u) => (
+                    <tr key={u.id} className="border-t border-black/5 text-slate-800">
+                      <td className="py-2">{u.fullName}</td>
+                      <td className="py-2">{u.email}</td>
+                      <td className="py-2">{u.role}</td>
+                      <td className="py-2">{u.active ? 'Yes' : 'No'}</td>
+                      <td className="py-2">
+                        <button type="button" onClick={() => void onToggleUserActive(u)} className="rounded-md border border-black/10 px-2 py-1 text-xs font-semibold text-slate-700">{u.active ? 'Deactivate' : 'Activate'}</button>
+                      </td>
+                    </tr>
+                  ))}
+                  {!usersLoading && users.length === 0 ? (
+                    <tr>
+                      <td className="py-3 text-slate-500" colSpan={5}>No users found.</td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        ) : null}
 
         <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <form onSubmit={onCreateProduct} className="rounded-2xl border border-black/5 bg-white p-5 shadow-lg space-y-3">
