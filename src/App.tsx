@@ -688,9 +688,10 @@ export default function App() {
                       <td className="py-2">
                         <button
                           type="button"
-                          disabled={savingUserId === u.id}
+                          disabled={savingUserId === u.id || authUser?.id === u.id}
                           onClick={() => void onToggleUserActive(u)}
                           className="rounded-md border border-black/10 px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-60"
+                          title={authUser?.id === u.id ? 'You cannot deactivate your own account' : undefined}
                         >
                           {u.active ? 'Deactivate' : 'Activate'}
                         </button>
