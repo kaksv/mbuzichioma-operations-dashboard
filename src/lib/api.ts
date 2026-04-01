@@ -55,6 +55,11 @@ export type UpdateProductInput = {
   active?: boolean
 }
 
+export type UploadProductImageResult = {
+  publicId: string
+  secureUrl: string
+}
+
 type CloudinarySignResponse = {
   cloudName: string
   apiKey: string
@@ -194,7 +199,7 @@ async function signCloudinaryUpload(filename: string): Promise<CloudinarySignRes
   return (await r.json()) as CloudinarySignResponse
 }
 
-export async function uploadProductImage(file: File): Promise<string> {
+export async function uploadProductImage(file: File): Promise<UploadProductImageResult> {
   const signed = await signCloudinaryUpload(file.name)
   const fd = new FormData()
   fd.append('file', file)
@@ -215,9 +220,13 @@ export async function uploadProductImage(file: File): Promise<string> {
   if (!r.ok) {
     throw new Error('Cloudinary upload failed')
   }
-  const data = (await r.json()) as { public_id?: string }
+  const data = (await r.json()) as { public_id?: string; secure_url?: string }
   if (!data.public_id) {
     throw new Error('Cloudinary upload did not return public_id')
   }
-  return data.public_id
+  return {
+    publicId: data.public_id,
+    /** Use for `<img src>`; DB should still store `publicId` only. */
+    secureUrl: data.secure_url ?? '',
+  }
 }

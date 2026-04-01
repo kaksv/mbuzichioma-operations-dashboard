@@ -15,6 +15,7 @@ import {
   type AdminOverview,
   type AdminProduct,
 } from './lib/api'
+import { resolveProductPhotoUrl } from './lib/resolvePhotoUrl'
 
 function formatUGX(n: number) {
   return new Intl.NumberFormat('en-UG', {
@@ -53,7 +54,10 @@ type ProductFormState = {
   title: string
   weightKg: string
   priceUGX: string
+  /** Stored value for the API: Cloudinary `public_id` or legacy; list loads may be full `https` from the API. */
   photoUrl: string
+  /** Set after a browser upload so the thumbnail works without `VITE_CLOUDINARY_CLOUD_NAME`. */
+  imagePreviewUrl?: string
   popular: boolean
   active: boolean
 }
@@ -124,6 +128,7 @@ export default function App() {
       weightKg: String(first.weightKg),
       priceUGX: String(first.priceUGX),
       photoUrl: first.photoUrl,
+      imagePreviewUrl: undefined,
       popular: !!first.popular,
       active: first.active,
     })
@@ -139,6 +144,7 @@ export default function App() {
       weightKg: String(p.weightKg),
       priceUGX: String(p.priceUGX),
       photoUrl: p.photoUrl,
+      imagePreviewUrl: undefined,
       popular: !!p.popular,
       active: p.active,
     })
@@ -243,6 +249,11 @@ export default function App() {
         popular: editForm.popular,
         active: editForm.active,
       })
+      setEditForm((prev) => ({
+        ...prev,
+        photoUrl: updated.photoUrl,
+        imagePreviewUrl: undefined,
+      }))
       setProducts((list) => list.map((p) => (p.id === updated.id ? updated : p)))
       await refreshOverview()
     } catch (e2: unknown) {
@@ -257,11 +268,11 @@ export default function App() {
     setError(null)
     setUploadingImage(true)
     try {
-      const publicId = await uploadProductImage(file)
+      const { publicId, secureUrl } = await uploadProductImage(file)
       if (field === 'create') {
-        setCreateForm((s) => ({ ...s, photoUrl: publicId }))
+        setCreateForm((s) => ({ ...s, photoUrl: publicId, imagePreviewUrl: secureUrl || undefined }))
       } else {
-        setEditForm((s) => ({ ...s, photoUrl: publicId }))
+        setEditForm((s) => ({ ...s, photoUrl: publicId, imagePreviewUrl: secureUrl || undefined }))
       }
     } catch (e2: unknown) {
       setError(e2 instanceof Error ? e2.message : 'Image upload failed')
@@ -390,7 +401,7 @@ export default function App() {
                 {createForm.photoUrl ? (
                   <div className="flex items-center gap-3">
                     <img
-                      src={createForm.photoUrl}
+                      src={createForm.imagePreviewUrl ?? resolveProductPhotoUrl(createForm.photoUrl)}
                       alt="New product preview"
                       className="h-12 w-16 rounded border border-black/10 object-cover"
                       onError={(e) => {
@@ -444,7 +455,7 @@ export default function App() {
                 {editForm.photoUrl ? (
                   <div className="flex items-center gap-3">
                     <img
-                      src={editForm.photoUrl}
+                      src={editForm.imagePreviewUrl ?? resolveProductPhotoUrl(editForm.photoUrl)}
                       alt="Edit product preview"
                       className="h-12 w-16 rounded border border-black/10 object-cover"
                       onError={(e) => {
@@ -513,7 +524,7 @@ export default function App() {
                         aria-label={`Preview ${p.title} image`}
                       >
                         <img
-                          src={p.photoUrl}
+                          src={resolveProductPhotoUrl(p.photoUrl)}
                           alt={p.title}
                           className="h-12 w-16 rounded-md object-cover transition group-hover:opacity-90"
                           loading="lazy"
@@ -724,7 +735,7 @@ export default function App() {
               Close
             </button>
             <img
-              src={selectedImage.photoUrl}
+              src={resolveProductPhotoUrl(selectedImage.photoUrl)}
               alt={selectedImage.title}
               className="max-h-[80vh] w-auto max-w-[90vw] object-contain"
               onError={(e) => {
