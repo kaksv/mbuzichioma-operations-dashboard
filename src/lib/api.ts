@@ -62,6 +62,14 @@ export type AdminOrder = {
   paymentMethod?: 'pesapal' | 'cash_on_delivery'
   paymentStatus?: 'pending' | 'paid' | 'failed'
   pesapalOrderTrackingId?: string
+  assignedDelivery?: { id: string; fullName: string; email: string }
+  assignedAtISO?: string
+  deliveryStatus?: 'unassigned' | 'assigned' | 'out_for_delivery' | 'delivered' | 'not_delivered'
+  deliveryNotes?: string
+  deliveryUpdatedAtISO?: string
+  verificationStatus?: 'pending_verification' | 'verified_delivered' | 'verified_failed'
+  verificationNotes?: string
+  verifiedAtISO?: string
   customer: {
     fullName: string
     phone: string
@@ -157,6 +165,52 @@ export async function updateOrderStatus(id: string, status: string): Promise<Adm
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ status }),
+  })
+  if (!r.ok) throw new Error(await readError(r))
+  const data = (await r.json()) as { order: AdminOrder }
+  return data.order
+}
+
+export async function claimOrderForDelivery(id: string): Promise<AdminOrder> {
+  const r = await fetch(`${base}/api/admin/orders/${encodeURIComponent(id)}/claim`, {
+    method: 'POST',
+    headers: adminHeaders(),
+  })
+  if (!r.ok) throw new Error(await readError(r))
+  const data = (await r.json()) as { order: AdminOrder }
+  return data.order
+}
+
+export async function updateOrderDeliveryStatus(
+  id: string,
+  status: 'assigned' | 'out_for_delivery' | 'delivered' | 'not_delivered',
+  notes?: string,
+): Promise<AdminOrder> {
+  const r = await fetch(`${base}/api/admin/orders/${encodeURIComponent(id)}/delivery-status`, {
+    method: 'PATCH',
+    headers: {
+      ...adminHeaders(),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ status, notes }),
+  })
+  if (!r.ok) throw new Error(await readError(r))
+  const data = (await r.json()) as { order: AdminOrder }
+  return data.order
+}
+
+export async function verifyOrderDelivery(
+  id: string,
+  outcome: 'verified_delivered' | 'verified_failed',
+  notes?: string,
+): Promise<AdminOrder> {
+  const r = await fetch(`${base}/api/admin/orders/${encodeURIComponent(id)}/verify-delivery`, {
+    method: 'PATCH',
+    headers: {
+      ...adminHeaders(),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ outcome, notes }),
   })
   if (!r.ok) throw new Error(await readError(r))
   const data = (await r.json()) as { order: AdminOrder }

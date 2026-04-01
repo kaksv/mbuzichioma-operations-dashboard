@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   clearAdminToken,
   createAdminUser,
+  claimOrderForDelivery,
   createProduct,
   getAdminToken,
   getAdminUsers,
@@ -15,8 +16,10 @@ import {
   restoreProduct,
   setAdminToken,
   updateAdminUser,
+  updateOrderDeliveryStatus,
   updateOrderStatus,
   updateProduct,
+  verifyOrderDelivery,
   uploadProductImage,
   type AdminAuthUser,
   type AdminOrder,
@@ -536,6 +539,51 @@ export default function App() {
 
   const canManageProducts = authUser?.role === 'owner' || authUser?.role === 'ops_manager'
   const canManageOrderStatus = authUser?.role === 'owner' || authUser?.role === 'ops_manager'
+  const canVerifyDelivery = authUser?.role === 'owner' || authUser?.role === 'ops_manager'
+  const isDeliveryPerson = authUser?.role === 'delivery_person'
+
+  async function onClaimOrder(orderId: string) {
+    setSavingOrderId(orderId)
+    setError(null)
+    try {
+      const updated = await claimOrderForDelivery(orderId)
+      setOrders((list) => list.map((o) => (o.id === updated.id ? updated : o)))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to claim order')
+    } finally {
+      setSavingOrderId(null)
+    }
+  }
+
+  async function onUpdateDelivery(orderId: string, status: 'out_for_delivery' | 'delivered' | 'not_delivered') {
+    setSavingOrderId(orderId)
+    setError(null)
+    try {
+      const updated = await updateOrderDeliveryStatus(orderId, status)
+      setOrders((list) => list.map((o) => (o.id === updated.id ? updated : o)))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to update delivery status')
+    } finally {
+      setSavingOrderId(null)
+    }
+  }
+
+  async function onVerifyDelivery(
+    orderId: string,
+    outcome: 'verified_delivered' | 'verified_failed',
+  ) {
+    const notes = window.prompt('Optional verification notes:') ?? ''
+    setSavingOrderId(orderId)
+    setError(null)
+    try {
+      const updated = await verifyOrderDelivery(orderId, outcome, notes)
+      setOrders((list) => list.map((o) => (o.id === updated.id ? updated : o)))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to verify delivery')
+    } finally {
+      setSavingOrderId(null)
+    }
+  }
 
   const cards = useMemo(
     () => [
@@ -1061,6 +1109,16 @@ export default function App() {
                   <div>
                     <span className="text-slate-500">Created:</span> {formatTime(o.createdAtISO)}
                   </div>
+                  <div>
+                    <span className="text-slate-500">Assigned:</span>{' '}
+                    {o.assignedDelivery ? `${o.assignedDelivery.fullName}` : 'Unassigned'}
+                  </div>
+                  <div>
+                    <span className="text-slate-500">Delivery:</span> {o.deliveryStatus ?? 'unassigned'}
+                  </div>
+                  <div>
+                    <span className="text-slate-500">Verification:</span> {o.verificationStatus ?? 'pending_verification'}
+                  </div>
                 </div>
 
                 <div className="mt-3 flex items-center gap-2">
@@ -1089,6 +1147,73 @@ export default function App() {
                     </button>
                   )}
                 </div>
+
+                {isDeliveryPerson ? (
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {!o.assignedDelivery ? (
+                      <button
+                        type="button"
+                        disabled={savingOrderId === o.id || (o.status ?? 'pending') !== 'confirmed'}
+                        onClick={() => void onClaimOrder(o.id)}
+                        className="rounded-lg border border-slate-300 bg-slate-50 px-3 py-1.5 text-sm font-semibold text-slate-700 disabled:opacity-60"
+                      >
+                        {savingOrderId === o.id ? 'Working...' : 'Claim Delivery'}
+                      </button>
+                    ) : o.assignedDelivery.id === authUser?.id ? (
+                      <>
+                        <button
+                          type="button"
+                          disabled={savingOrderId === o.id}
+                          onClick={() => void onUpdateDelivery(o.id, 'out_for_delivery')}
+                          className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-semibold text-blue-700 disabled:opacity-60"
+                        >
+                          Out for delivery
+                        </button>
+                        <button
+                          type="button"
+                          disabled={savingOrderId === o.id}
+                          onClick={() => void onUpdateDelivery(o.id, 'delivered')}
+                          className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-700 disabled:opacity-60"
+                        >
+                          Delivered
+                        </button>
+                        <button
+                          type="button"
+                          disabled={savingOrderId === o.id}
+                          onClick={() => void onUpdateDelivery(o.id, 'not_delivered')}
+                          className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-sm font-semibold text-red-700 disabled:opacity-60"
+                        >
+                          Not delivered
+                        </button>
+                      </>
+                    ) : (
+                      <div className="text-xs text-slate-500">Assigned to {o.assignedDelivery.fullName}</div>
+                    )}
+                  </div>
+                ) : null}
+
+                {canVerifyDelivery &&
+                (o.deliveryStatus === 'delivered' || o.deliveryStatus === 'not_delivered') &&
+                o.verificationStatus === 'pending_verification' ? (
+                  <div className="mt-3 flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={savingOrderId === o.id}
+                      onClick={() => void onVerifyDelivery(o.id, 'verified_delivered')}
+                      className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-700 disabled:opacity-60"
+                    >
+                      Verify delivered
+                    </button>
+                    <button
+                      type="button"
+                      disabled={savingOrderId === o.id}
+                      onClick={() => void onVerifyDelivery(o.id, 'verified_failed')}
+                      className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-sm font-semibold text-red-700 disabled:opacity-60"
+                    >
+                      Verify failed
+                    </button>
+                  </div>
+                ) : null}
               </article>
             ))}
 
