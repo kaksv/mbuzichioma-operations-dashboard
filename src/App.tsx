@@ -341,6 +341,7 @@ export default function App() {
     clearAdminToken()
     localStorage.removeItem(adminUserStorageKey)
     setAuthUser(null)
+    setError(null)
     setOverview(null)
     setProducts([])
     setOrders([])
