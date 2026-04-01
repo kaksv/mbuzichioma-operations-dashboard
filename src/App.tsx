@@ -88,7 +88,8 @@ export default function App() {
   const [createIdTouched, setCreateIdTouched] = useState(false)
   const [editProductId, setEditProductId] = useState<string>('')
   const [editForm, setEditForm] = useState<ProductFormState>(emptyCreateForm)
-  const [savingProduct, setSavingProduct] = useState(false)
+  const [savingCreateProduct, setSavingCreateProduct] = useState(false)
+  const [savingEditProduct, setSavingEditProduct] = useState(false)
   const [trashBusyId, setTrashBusyId] = useState<string | null>(null)
   const [uploadingImage, setUploadingImage] = useState(false)
 
@@ -221,12 +222,28 @@ export default function App() {
     }
   }, [trashProducts.length, selectedTrashImageIndex])
 
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      void Promise.all([getOrders(statusFilter, 100), getOverview()])
+        .then(([os, ov]) => {
+          setOrders(os)
+          setOverview(ov)
+        })
+        .catch(() => {
+          // Keep current view if background poll fails.
+        })
+    }, 15000)
+
+    return () => window.clearInterval(id)
+  }, [statusFilter])
+
   async function onChangeStatus(orderId: string, status: string) {
     setSavingOrderId(orderId)
     setError(null)
     try {
       const updated = await updateOrderStatus(orderId, status)
-      setOrders((list) => list.map((o) => (o.id === orderId ? updated : o)))
+      setOrders((list) => list.map((o) => (o.id === updated.id ? updated : o)))
       await refreshOverview()
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to update order status')
@@ -238,7 +255,7 @@ export default function App() {
   async function onCreateProduct(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
-    setSavingProduct(true)
+    setSavingCreateProduct(true)
     try {
       await createProduct({
         id: createForm.id.trim(),
@@ -255,7 +272,7 @@ export default function App() {
     } catch (e2: unknown) {
       setError(e2 instanceof Error ? e2.message : 'Failed to create product')
     } finally {
-      setSavingProduct(false)
+      setSavingCreateProduct(false)
     }
   }
 
@@ -263,7 +280,7 @@ export default function App() {
     e.preventDefault()
     if (!editProductId) return
     setError(null)
-    setSavingProduct(true)
+    setSavingEditProduct(true)
     try {
       const updated = await updateProduct(editProductId, {
         title: editForm.title.trim(),
@@ -283,7 +300,7 @@ export default function App() {
     } catch (e2: unknown) {
       setError(e2 instanceof Error ? e2.message : 'Failed to update product')
     } finally {
-      setSavingProduct(false)
+      setSavingEditProduct(false)
     }
   }
 
@@ -473,7 +490,7 @@ export default function App() {
               <label className="inline-flex items-center gap-2"><input type="checkbox" checked={createForm.active} onChange={(e)=>setCreateForm(s=>({...s,active:e.target.checked}))} /> Active</label>
             </div>
 
-            <button disabled={savingProduct || !createForm.photoUrl.trim()} className="rounded-lg bg-orange-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-60">{savingProduct ? 'Saving...' : 'Create product'}</button>
+            <button disabled={savingCreateProduct || !createForm.photoUrl.trim()} className="rounded-lg bg-orange-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-60">{savingCreateProduct ? 'Saving...' : 'Create product'}</button>
           </form>
 
           <form onSubmit={onSaveEdit} className="rounded-2xl border border-black/5 bg-white p-5 shadow-lg space-y-3">
@@ -527,7 +544,7 @@ export default function App() {
               <label className="inline-flex items-center gap-2"><input type="checkbox" checked={editForm.active} onChange={(e)=>setEditForm(s=>({...s,active:e.target.checked}))} /> Active</label>
             </div>
 
-            <button disabled={savingProduct || !editProductId || !editForm.photoUrl.trim()} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-60">{savingProduct ? 'Saving...' : 'Save changes'}</button>
+            <button disabled={savingEditProduct || !editProductId || !editForm.photoUrl.trim()} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-60">{savingEditProduct ? 'Saving...' : 'Save changes'}</button>
           </form>
         </section>
 

@@ -1,5 +1,35 @@
 const base = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')
 
+const adminTokenKey = 'mbz_admin_token'
+
+export type AdminUserRole = 'owner' | 'ops_manager' | 'delivery_person'
+
+export type AdminAuthUser = {
+  id: string
+  email: string
+  fullName: string
+  role: AdminUserRole
+}
+
+export type AdminUser = AdminAuthUser & {
+  active: boolean
+  createdAtISO?: string
+  updatedAtISO?: string
+}
+
+export function getAdminToken(): string {
+  return localStorage.getItem(adminTokenKey) ?? ''
+}
+
+export function setAdminToken(token: string) {
+  localStorage.setItem(adminTokenKey, token)
+}
+
+export function clearAdminToken() {
+  localStorage.removeItem(adminTokenKey)
+}
+
+
 export type AdminOverview = {
   products: number
   ordersToday: number
@@ -77,8 +107,12 @@ type CloudinarySignResponse = {
 }
 
 function adminHeaders(): HeadersInit {
+  const headers: Record<string, string> = {}
+  const token = getAdminToken()
+  if (token) headers.Authorization = `Bearer ${token}`
   const key = import.meta.env.VITE_ADMIN_API_KEY?.trim()
-  return key ? { 'x-admin-key': key } : {}
+  if (key) headers['x-admin-key'] = key
+  return headers
 }
 
 async function readError(r: Response): Promise<string> {
@@ -236,4 +270,61 @@ export async function uploadProductImage(file: File): Promise<UploadProductImage
     /** Use for `<img src>`; DB should still store `publicId` only. */
     secureUrl: data.secure_url ?? '',
   }
+}
+
+
+export async function loginAdmin(email: string, password: string): Promise<{ token: string; user: AdminAuthUser }> {
+  const r = await fetch(`${base}/api/admin/auth/login`, {
+    method: 'POST',
+    headers: {
+      ...adminHeaders(),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ email, password }),
+  })
+  if (!r.ok) throw new Error(await readError(r))
+  return (await r.json()) as { token: string; user: AdminAuthUser }
+}
+
+export async function getAdminUsers(): Promise<AdminUser[]> {
+  const r = await fetch(`${base}/api/admin/users`, { headers: adminHeaders() })
+  if (!r.ok) throw new Error(await readError(r))
+  const data = (await r.json()) as { users: AdminUser[] }
+  return data.users
+}
+
+export async function createAdminUser(body: {
+  email: string
+  fullName: string
+  password: string
+  role: AdminUserRole
+}): Promise<AdminUser> {
+  const r = await fetch(`${base}/api/admin/users`, {
+    method: 'POST',
+    headers: {
+      ...adminHeaders(),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+  if (!r.ok) throw new Error(await readError(r))
+  const data = (await r.json()) as { user: AdminUser }
+  return data.user
+}
+
+export async function updateAdminUser(
+  id: string,
+  body: Partial<{ fullName: string; role: AdminUserRole; active: boolean; password: string }>,
+): Promise<AdminUser> {
+  const r = await fetch(`${base}/api/admin/users/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: {
+      ...adminHeaders(),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+  if (!r.ok) throw new Error(await readError(r))
+  const data = (await r.json()) as { user: AdminUser }
+  return data.user
 }
