@@ -128,6 +128,7 @@ export default function App() {
   })
   const [creatingUser, setCreatingUser] = useState(false)
   const [savingUserId, setSavingUserId] = useState<string | null>(null)
+  const [deliveryAlert, setDeliveryAlert] = useState<string | null>(null)
 
   async function refreshOverview() {
     const nextOverview = await getOverview()
@@ -541,6 +542,23 @@ export default function App() {
   const canManageOrderStatus = authUser?.role === 'owner' || authUser?.role === 'ops_manager'
   const canVerifyDelivery = authUser?.role === 'owner' || authUser?.role === 'ops_manager'
   const isDeliveryPerson = authUser?.role === 'delivery_person'
+
+  useEffect(() => {
+    if (!canVerifyDelivery) {
+      setDeliveryAlert(null)
+      return
+    }
+    const pendingVerification = orders.filter(
+      (o) =>
+        (o.deliveryStatus === 'delivered' || o.deliveryStatus === 'not_delivered') &&
+        o.verificationStatus === 'pending_verification',
+    ).length
+    setDeliveryAlert(
+      pendingVerification > 0
+        ? `${pendingVerification} delivery result(s) need ops verification.`
+        : null,
+    )
+  }, [orders, canVerifyDelivery])
 
   async function onClaimOrder(orderId: string) {
     setSavingOrderId(orderId)
@@ -1067,6 +1085,12 @@ export default function App() {
             </div>
           </div>
 
+          {deliveryAlert ? (
+            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">
+              {deliveryAlert}
+            </div>
+          ) : null}
+
           <div className="mt-4 space-y-3">
             {orders.map((o) => (
               <article key={o.id} className="rounded-xl border border-black/5 p-4">
@@ -1137,14 +1161,7 @@ export default function App() {
                       <option value="cancelled">Cancelled</option>
                     </select>
                   ) : (
-                    <button
-                      type="button"
-                      disabled={savingOrderId === o.id || (o.status ?? 'pending') !== 'pending'}
-                      onClick={() => void onChangeStatus(o.id, 'confirmed')}
-                      className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-700 disabled:opacity-60"
-                    >
-                      {savingOrderId === o.id ? 'Updating...' : 'Mark Confirmed'}
-                    </button>
+                    <div className="text-xs text-slate-500">Only ops/owner can change order status.</div>
                   )}
                 </div>
 
