@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   clearAdminToken,
   createAdminUser,
@@ -100,6 +100,8 @@ export default function App() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [savingOrderId, setSavingOrderId] = useState<string | null>(null)
+  /** Bumped when order lists are mutated so stale in-flight poll responses are ignored. */
+  const ordersPollGenRef = useRef(0)
   const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null)
   const [selectedTrashImageIndex, setSelectedTrashImageIndex] = useState<number | null>(null)
 
@@ -292,15 +294,17 @@ export default function App() {
   useEffect(() => {
     if (!authUser) return
     const id = window.setInterval(() => {
+      const gen = ordersPollGenRef.current
       void Promise.all([getOrders(statusFilter, 100), getOverview()])
         .then(([os, ov]) => {
+          if (gen !== ordersPollGenRef.current) return
           setOrders(os)
           setOverview(ov)
         })
         .catch(() => {
           // Keep current view if background poll fails.
         })
-    }, 15000)
+    }, 5000)
 
     return () => window.clearInterval(id)
   }, [statusFilter, authUser])
@@ -409,14 +413,21 @@ export default function App() {
   }, [authUser?.role])
 
   async function onChangeStatus(orderId: string, status: string) {
+    ordersPollGenRef.current += 1
     setSavingOrderId(orderId)
     setError(null)
+    setOrders((list) => list.map((o) => (o.id === orderId ? { ...o, status } : o)))
     try {
       const updated = await updateOrderStatus(orderId, status)
       setOrders((list) => list.map((o) => (o.id === updated.id ? updated : o)))
       await refreshOverview()
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to update order status')
+      try {
+        setOrders(await getOrders(statusFilter, 100))
+      } catch {
+        // keep optimistic row if refresh fails
+      }
     } finally {
       setSavingOrderId(null)
     }
@@ -558,6 +569,7 @@ export default function App() {
   }, [orders, canVerifyDelivery])
 
   async function onClaimOrder(orderId: string) {
+    ordersPollGenRef.current += 1
     setSavingOrderId(orderId)
     setError(null)
     try {
@@ -571,6 +583,7 @@ export default function App() {
   }
 
   async function onSetDeliveryResult(orderId: string, status: 'delivered' | 'not_delivered') {
+    ordersPollGenRef.current += 1
     setSavingOrderId(orderId)
     setError(null)
     try {
