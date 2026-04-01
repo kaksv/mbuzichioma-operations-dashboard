@@ -124,6 +124,7 @@ export default function App() {
     role: 'ops_manager' as AdminUserRole,
   })
   const [creatingUser, setCreatingUser] = useState(false)
+  const [savingUserId, setSavingUserId] = useState<string | null>(null)
 
   async function refreshOverview() {
     const nextOverview = await getOverview()
@@ -355,13 +356,35 @@ export default function App() {
     }
   }
 
-  async function onToggleUserActive(user: AdminUser) {
+  async function applyUserUpdate(userId: string, body: Partial<{ fullName: string; role: AdminUserRole; active: boolean; password: string }>) {
+    setSavingUserId(userId)
     try {
-      const updated = await updateAdminUser(user.id, { active: !user.active })
+      const updated = await updateAdminUser(userId, body)
       setUsers((list) => list.map((u) => (u.id === updated.id ? { ...u, ...updated } : u)))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to update user')
+    } finally {
+      setSavingUserId(null)
     }
+  }
+
+  async function onToggleUserActive(user: AdminUser) {
+    await applyUserUpdate(user.id, { active: !user.active })
+  }
+
+  async function onChangeUserRole(user: AdminUser, role: AdminUserRole) {
+    if (role === user.role) return
+    await applyUserUpdate(user.id, { role })
+  }
+
+  async function onResetUserPassword(user: AdminUser) {
+    const next = window.prompt(`Set a new password for ${user.email} (min 8 chars):`)
+    if (next == null) return
+    if (next.length < 8) {
+      setError('Password must be at least 8 characters.')
+      return
+    }
+    await applyUserUpdate(user.id, { password: next })
   }
 
 
@@ -630,6 +653,7 @@ export default function App() {
                     <th className="pb-2">Email</th>
                     <th className="pb-2">Role</th>
                     <th className="pb-2">Active</th>
+                    <th className="pb-2">Credentials</th>
                     <th className="pb-2">Actions</th>
                   </tr>
                 </thead>
@@ -638,16 +662,44 @@ export default function App() {
                     <tr key={u.id} className="border-t border-black/5 text-slate-800">
                       <td className="py-2">{u.fullName}</td>
                       <td className="py-2">{u.email}</td>
-                      <td className="py-2">{u.role}</td>
+                      <td className="py-2">
+                        <select
+                          value={u.role}
+                          disabled={savingUserId === u.id}
+                          onChange={(e) => void onChangeUserRole(u, e.target.value as AdminUserRole)}
+                          className="rounded-md border border-black/10 px-2 py-1 text-xs"
+                        >
+                          <option value="owner">owner</option>
+                          <option value="ops_manager">ops_manager</option>
+                          <option value="delivery_person">delivery_person</option>
+                        </select>
+                      </td>
                       <td className="py-2">{u.active ? 'Yes' : 'No'}</td>
                       <td className="py-2">
-                        <button type="button" onClick={() => void onToggleUserActive(u)} className="rounded-md border border-black/10 px-2 py-1 text-xs font-semibold text-slate-700">{u.active ? 'Deactivate' : 'Activate'}</button>
+                        <button
+                          type="button"
+                          disabled={savingUserId === u.id}
+                          onClick={() => void onResetUserPassword(u)}
+                          className="rounded-md border border-black/10 px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-60"
+                        >
+                          Reset password
+                        </button>
+                      </td>
+                      <td className="py-2">
+                        <button
+                          type="button"
+                          disabled={savingUserId === u.id}
+                          onClick={() => void onToggleUserActive(u)}
+                          className="rounded-md border border-black/10 px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-60"
+                        >
+                          {u.active ? 'Deactivate' : 'Activate'}
+                        </button>
                       </td>
                     </tr>
                   ))}
                   {!usersLoading && users.length === 0 ? (
                     <tr>
-                      <td className="py-3 text-slate-500" colSpan={5}>No users found.</td>
+                      <td className="py-3 text-slate-500" colSpan={6}>No users found.</td>
                     </tr>
                   ) : null}
                 </tbody>
