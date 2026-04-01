@@ -725,12 +725,28 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-slate-700 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-slate-700 sm:grid-cols-2 lg:grid-cols-3">
                   <div>
                     <span className="text-slate-500">Customer:</span> {o.customer.fullName}
                   </div>
                   <div>
                     <span className="text-slate-500">Phone:</span> {o.customer.phone}
+                  </div>
+                  <div>
+                    <span className="text-slate-500">Fulfillment:</span>{' '}
+                    {o.fulfillmentType ?? '—'}
+                    {o.deliveryFeePending ? ' (fee pending)' : ''}
+                  </div>
+                  <div>
+                    <span className="text-slate-500">Payment:</span>{' '}
+                    {o.paymentMethod ?? '—'} / {o.paymentStatus ?? '—'}
+                  </div>
+                  <div>
+                    <span className="text-slate-500">Line:</span>{' '}
+                    {o.subtotalUGX != null ? formatUGX(o.subtotalUGX) : '—'}
+                    {o.deliveryFeeUGX != null && o.deliveryFeeUGX > 0 ? (
+                      <span className="text-slate-500"> + delivery {formatUGX(o.deliveryFeeUGX)}</span>
+                    ) : null}
                   </div>
                   <div>
                     <span className="text-slate-500">Total:</span> {formatUGX(o.totalUGX)}

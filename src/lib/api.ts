@@ -24,7 +24,14 @@ export type AdminOrder = {
   packageTitle: string
   unitPriceUGX: number
   quantity: number
+  subtotalUGX?: number
+  deliveryFeeUGX?: number
   totalUGX: number
+  fulfillmentType?: 'pickup' | 'delivery' | 'delivery_pending'
+  deliveryFeePending?: boolean
+  paymentMethod?: 'pesapal' | 'cash_on_delivery'
+  paymentStatus?: 'pending' | 'paid' | 'failed'
+  pesapalOrderTrackingId?: string
   customer: {
     fullName: string
     phone: string
