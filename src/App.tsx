@@ -131,15 +131,24 @@ export default function App() {
     setOverview(nextOverview)
   }
 
-  async function loadAll(filter = statusFilter) {
+  async function loadAll(filter = statusFilter, roleOverride?: AdminUserRole) {
     setLoading(true)
     setError(null)
     try {
-      const [ov, ps, os, tp] = await Promise.all([getOverview(), getProducts(), getOrders(filter, 100), getTrashedProducts()])
-      setOverview(ov)
-      setProducts(ps)
-      setOrders(os)
-      setTrashProducts(tp)
+      const role = roleOverride ?? authUser?.role
+      if (role === 'delivery_person') {
+        const [ov, os] = await Promise.all([getOverview(), getOrders(filter, 100)])
+        setOverview(ov)
+        setOrders(os)
+        setProducts([])
+        setTrashProducts([])
+      } else {
+        const [ov, ps, os, tp] = await Promise.all([getOverview(), getProducts(), getOrders(filter, 100), getTrashedProducts()])
+        setOverview(ov)
+        setProducts(ps)
+        setOrders(os)
+        setTrashProducts(tp)
+      }
     } catch (e: unknown) {
       if (isUnauthorizedError(e)) {
         clearAdminToken()
@@ -314,7 +323,7 @@ export default function App() {
       localStorage.setItem(adminUserStorageKey, JSON.stringify(res.user))
       setAuthUser(res.user)
       setLoginPassword('')
-      await loadAll('')
+      await loadAll('', res.user.role)
       if (res.user.role === 'owner') {
         await loadUsers()
       }
@@ -525,6 +534,9 @@ export default function App() {
     }
   }
 
+  const canManageProducts = authUser?.role === 'owner' || authUser?.role === 'ops_manager'
+  const canManageOrderStatus = authUser?.role === 'owner' || authUser?.role === 'ops_manager'
+
   const cards = useMemo(
     () => [
       { label: 'Products', value: String(overview?.products ?? 0), hint: 'Active package sizes' },
@@ -709,6 +721,7 @@ export default function App() {
           </section>
         ) : null}
 
+        {canManageProducts ? (
         <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <form onSubmit={onCreateProduct} className="rounded-2xl border border-black/5 bg-white p-5 shadow-lg space-y-3">
             <h2 className="text-lg font-black text-slate-900">Create Product</h2>
@@ -819,7 +832,9 @@ export default function App() {
             <button disabled={savingEditProduct || !editProductId || !editForm.photoUrl.trim()} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-60">{savingEditProduct ? 'Saving...' : 'Save changes'}</button>
           </form>
         </section>
+        ) : null}
 
+        {canManageProducts ? (
         <section className="rounded-2xl border border-black/5 bg-white p-5 shadow-lg">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-lg font-black text-slate-900">Products</h2>
@@ -900,8 +915,10 @@ export default function App() {
             </table>
           </div>
         </section>
+        ) : null}
 
 
+        {canManageProducts ? (
         <section className="rounded-2xl border border-black/5 bg-white p-5 shadow-lg">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-lg font-black text-slate-900">Trash</h2>
@@ -979,6 +996,7 @@ export default function App() {
             </table>
           </div>
         </section>
+        ) : null}
 
         <section className="rounded-2xl border border-black/5 bg-white p-5 shadow-lg">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1047,18 +1065,29 @@ export default function App() {
 
                 <div className="mt-3 flex items-center gap-2">
                   <label className="text-xs font-semibold text-slate-600">Update status:</label>
-                  <select
-                    value={o.status ?? 'pending'}
-                    disabled={savingOrderId === o.id}
-                    onChange={async (e) => {
-                      await onChangeStatus(o.id, e.target.value)
-                    }}
-                    className="rounded-lg border border-black/10 px-3 py-1.5 text-sm"
-                  >
-                    <option value="pending">Pending</option>
-                    <option value="confirmed">Confirmed</option>
-                    <option value="cancelled">Cancelled</option>
-                  </select>
+                  {canManageOrderStatus ? (
+                    <select
+                      value={o.status ?? 'pending'}
+                      disabled={savingOrderId === o.id}
+                      onChange={async (e) => {
+                        await onChangeStatus(o.id, e.target.value)
+                      }}
+                      className="rounded-lg border border-black/10 px-3 py-1.5 text-sm"
+                    >
+                      <option value="pending">Pending</option>
+                      <option value="confirmed">Confirmed</option>
+                      <option value="cancelled">Cancelled</option>
+                    </select>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={savingOrderId === o.id || (o.status ?? 'pending') !== 'pending'}
+                      onClick={() => void onChangeStatus(o.id, 'confirmed')}
+                      className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-700 disabled:opacity-60"
+                    >
+                      {savingOrderId === o.id ? 'Updating...' : 'Mark Confirmed'}
+                    </button>
+                  )}
                 </div>
               </article>
             ))}
