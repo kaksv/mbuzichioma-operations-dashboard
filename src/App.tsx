@@ -16,6 +16,7 @@ import {
   restoreProduct,
   setAdminToken,
   updateAdminUser,
+  updateOrderDeliveryStatus,
   updateOrderStatus,
   updateProduct,
   uploadProductImage,
@@ -569,6 +570,19 @@ export default function App() {
     }
   }
 
+  async function onSetDeliveryResult(orderId: string, status: 'delivered' | 'not_delivered') {
+    setSavingOrderId(orderId)
+    setError(null)
+    try {
+      const updated = await updateOrderDeliveryStatus(orderId, status)
+      setOrders((list) => list.map((o) => (o.id === updated.id ? updated : o)))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to update delivery result')
+    } finally {
+      setSavingOrderId(null)
+    }
+  }
+
   const cards = useMemo(
     () => [
       { label: 'Products', value: String(overview?.products ?? 0), hint: 'Active package sizes' },
@@ -608,7 +622,7 @@ export default function App() {
         const processingUnassigned = o.status === 'processing' && !o.assignedDelivery
         const mineInWorkflow =
           assignedToMe &&
-          ['processing', 'delivered', 'confirmed'].includes(o.status ?? '')
+          ['processing', 'delivered', 'confirmed', 'cancelled'].includes(o.status ?? '')
         return processingUnassigned || mineInWorkflow
       })
     }
@@ -1182,7 +1196,7 @@ export default function App() {
                     {!o.assignedDelivery ? (
                       <button
                         type="button"
-                        disabled={savingOrderId === o.id || (o.status ?? 'pending') !== 'confirmed'}
+                        disabled={savingOrderId === o.id || (o.status ?? 'pending') !== 'processing'}
                         onClick={() => void onClaimOrder(o.id)}
                         className="rounded-lg border border-slate-300 bg-slate-50 px-3 py-1.5 text-sm font-semibold text-slate-700 disabled:opacity-60"
                       >
@@ -1193,10 +1207,18 @@ export default function App() {
                         <button
                           type="button"
                           disabled={savingOrderId === o.id || (o.status ?? 'pending') !== 'processing'}
-                          onClick={() => void onChangeStatus(o.id, 'delivered')}
+                          onClick={() => void onSetDeliveryResult(o.id, 'delivered')}
                           className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-700 disabled:opacity-60"
                         >
                           {savingOrderId === o.id ? 'Updating...' : 'Mark Delivered'}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={savingOrderId === o.id || (o.status ?? 'pending') !== 'processing'}
+                          onClick={() => void onSetDeliveryResult(o.id, 'not_delivered')}
+                          className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-sm font-semibold text-rose-700 disabled:opacity-60"
+                        >
+                          {savingOrderId === o.id ? 'Updating...' : 'Mark Canceled'}
                         </button>
                       </>
                     ) : (
